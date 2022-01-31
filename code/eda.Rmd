@@ -3,7 +3,7 @@ title: "What do FEs do the spectrum?"
 output: html_notebook
 ---
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 pacman::p_load('tidyverse', 'fixest', 'lubridate')
 theme_set(theme_bw())
 set.seed(123)
@@ -19,7 +19,8 @@ df   <- expand_grid(year = 1990:2010, month = 1:12) %>%
          y = NA)
 df$y[1] <- 0
 N <- length(df$y)
-for(ii in 2:N) df$y[ii] <- beta * df$y[ii-1] + rnorm(1) + rnorm(1) * df$year[ii]
+for(ii in 2:N) df$y[ii] <- beta * df$y[ii-1] + rnorm(1) 
+df <- df %>% group_by(year) %>% mutate(y = y + rnorm(n = 1, sd = 2)) %>% ungroup()
 
 m  <- feols(df, y ~ 1 | year)
 df$residuals <- m$residuals
