@@ -1,0 +1,51 @@
+---
+title: "What do FEs do the spectrum?"
+output: html_notebook
+---
+
+```{r}
+pacman::p_load('tidyverse', 'fixest', 'lubridate')
+theme_set(theme_bw())
+set.seed(123)
+```
+
+First, lets simulate a simple time series...
+
+```{r}
+beta <- 0.9
+
+df   <- expand_grid(year = 1990:2010, month = 1:12) %>% 
+  mutate(date = make_date(year = year, month = month, day = 1), 
+         y = NA)
+df$y[1] <- 0
+N <- length(df$y)
+for(ii in 2:N) df$y[ii] <- beta * df$y[ii-1] + rnorm(1) + rnorm(1) * df$year[ii]
+
+m  <- feols(df, y ~ 1 | year)
+df$residuals <- m$residuals
+```
+
+Plot the series...
+
+```{r}
+df %>% pivot_longer(c(y, residuals)) %>% 
+  ggplot() + geom_line(aes(x = date, y = value, color = name), alpha = 0.9)
+
+```
+
+Get the spectrum of the time series. Calculate a FE
+
+```{r}
+ss <- spectrum(df$y, log = "no", plot = FALSE)
+
+# Get the spectrum of the residuals
+s1 <- spectrum(m$residuals, log = "no", plot = FALSE)
+
+# Organise and plot outputs...
+out <- tibble(freq = ss$freq, y = ss$spec, filtered = s1$spec) %>% 
+  pivot_longer(cols = -freq)
+
+ggplot(out) + geom_line(aes(x = freq, y = value, color = name))
+```
+
+Version for t
