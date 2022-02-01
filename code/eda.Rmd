@@ -7,17 +7,26 @@ output: html_notebook
 pacman::p_load('tidyverse', 'fixest', 'lubridate')
 theme_set(theme_bw())
 set.seed(123)
+if(Sys.info()['user'] == "tombearpark") {
+  dir <- "/Users/tombearpark/Documents/GitHub/fourier_fe/code"
+}else{
+  stop("You need to set your paths up")
+}
+source(file.path(dir, "0_funcs.R"))
 ```
+
+# Section 1: How do FEs affect the spectrum?
 
 First, lets simulate a simple time series...
 
 ```{r}
 beta <- 0.9
 
-df   <- expand_grid(unit = 1, year = 1990:2010, month = 1:12) %>% 
+dates   <- 
+  expand_grid(unit = 1, year = 1990:2010, month = 1:12) %>% 
   mutate(date = make_date(year = year, month = month, day = 1))
 
-gen_ts <- function(df, newvar, beta = 0.9){
+gen_ts <- function(df, newvar, beta = 0.95){
   df[newvar]   <- NA
   df[1,newvar] <- 0
   N <- length(df[[newvar]])
@@ -27,7 +36,7 @@ gen_ts <- function(df, newvar, beta = 0.9){
       mutate(!!newvar := .data[[newvar]] + rnorm(n = 1, sd = 2)) %>% 
     ungroup()
 }
-df <- gen_ts(df, "y1")
+df <- gen_ts(dates, "y1")
 m  <- feols(df, y1 ~ 1 | year)
 df$residuals1 <- m$residuals
 ```
@@ -35,8 +44,10 @@ df$residuals1 <- m$residuals
 Plot the series...
 
 ```{r}
-df %>% pivot_longer(c(y1, residuals1)) %>% 
-  ggplot() + geom_line(aes(x = date, y = value, color = name), alpha = 0.9)
+df %>% 
+  pivot_longer(c(y1, residuals1)) %>% 
+  ggplot() + 
+  geom_line(aes(x = date, y = value, color = name), alpha = 0.9)
 
 ```
 
@@ -74,7 +85,7 @@ gen_panel <- function(no_units){
   )
 }
 
-df2 <- gen_panel(2)
+df2 <- gen_panel(5)
 
 ggplot(df2) + geom_line(aes(x = date, y = y, color = unit))
 
@@ -113,4 +124,34 @@ compare_spectrums_by_unit(df2, "y", "residuals") %>%
 compare_spectrums_by_unit(df2, "y", "residuals_full") %>% 
   plot_panel()
 
+```
+
+# Section 2: Getting the same coefficients using FE and Fourier
+
+```{r}
+dates   <- 
+  expand_grid(unit = 1, year = 1980:2010, month = 1:12) %>% 
+  mutate(date = make_date(year = year, month = month, day = 1))
+
+df <- gen_ts(dates, "y", beta = 0.8)
+df$ly <- dplyr::lag(df$y)
+
+# Estimate using FE
+m  <- feols(y ~ ly | year, data = df)
+coef(m)
+```
+
+```{r}
+Q <- 2 * dim(df)[1] / 12
+df <- add_fitted_vals(df, Q, "y")
+ggplot(df) + 
+  geom_line(aes(x = date, y = y), color = "red", alpha = 0.5) +
+  geom_line(aes(x = date, y = residual)) + 
+  geom_line(aes(x = date, y = yhat)) + 
+  ggtitle("Red line is sum of the two black lines")
+```
+
+```{r}
+
+lm(data = df, residual ~ dplyr::lag(residual))
 ```
