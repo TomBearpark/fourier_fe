@@ -4,11 +4,12 @@ output: html_notebook
 ---
 
 ```{r message=FALSE, warning=FALSE}
-pacman::p_load('tidyverse', 'fixest', 'lubridate')
+pacman::p_load('tidyverse', 'fixest', 'lubridate', 'patchwork')
 theme_set(theme_bw())
 set.seed(123)
 if(Sys.info()['user'] == "tombearpark") {
   dir <- "/Users/tombearpark/Documents/GitHub/fourier_fe/code"
+  out <- "/Users/tombearpark/Dropbox/Apps/Overleaf/What do Fixed Effects do to your Data?/images"
 }else{
   stop("You need to set your paths up")
 }
@@ -26,7 +27,7 @@ dates   <-
   expand_grid(unit = 1, year = 1990:2010, month = 1:12) %>% 
   mutate(date = make_date(year = year, month = month, day = 1))
 
-gen_ts <- function(df, newvar, beta = 0.95){
+gen_ts <- function(df, newvar, beta = 0.8){
   df[newvar]   <- NA
   df[1,newvar] <- 0
   N <- length(df[[newvar]])
@@ -39,6 +40,11 @@ gen_ts <- function(df, newvar, beta = 0.95){
 df <- gen_ts(dates, "y1")
 m  <- feols(df, y1 ~ 1 | year)
 df$residuals1 <- m$residuals
+
+df %>% 
+  ggplot() + 
+  geom_line(aes(x = date, y = y1), alpha = 0.9)
+ggsave(paste0(out, "/ts.png"), height = 4, width = 7)
 ```
 
 Plot the series...
@@ -46,9 +52,10 @@ Plot the series...
 ```{r}
 df %>% 
   pivot_longer(c(y1, residuals1)) %>% 
+  mutate(alpha = ifelse(name == "y1", 0.5, 0.9)) %>%
   ggplot() + 
   geom_line(aes(x = date, y = value, color = name), alpha = 0.9)
-
+ggsave(paste0(out, "/ts_w_resid.png"), height = 4, width = 7)
 ```
 
 Get the spectrum of the time series. Calculate a FE
@@ -64,9 +71,17 @@ compare_spectrums <- function(df, ts1, ts2){
     pivot_longer(cols = -c(freq))
 }
 
-out <- compare_spectrums(df, "y1", "residuals1")
+plot_df <- compare_spectrums(df, "y1", "residuals1")
 
-ggplot(out) + geom_line(aes(x = freq, y = value, color = name))
+p1 <- ggplot(plot_df) + 
+  geom_line(aes(x = freq, y = value, color = name)) 
+
+p2 <- ggplot(plot_df %>% filter(freq < 0.1)) + 
+  geom_line(aes(x = freq, y = value, color = name)) + 
+  geom_vline(xintercept = 0.5 / (length(unique(df$year))))
+p <- p1 + p2
+ggsave(plot = p, filename = paste0(out, "/ts_spec.png"), height = 4, width = 10)
+p
 ```
 
 Clearly, for an individual time series, filtering the data in this way eliminates the low frequency information.
@@ -111,19 +126,19 @@ compare_spectrums_by_unit <- function(df, ts1, ts2){
 
 plot_panel <- function(df){
     ggplot(df) + 
-      geom_line(aes(x = freq, y = value, color = name)) + 
-      facet_wrap(~unit, scales = "free")
+      geom_line(aes(x = log(freq), y = log(value), color = name)) + 
+      facet_wrap(~unit, scales = "free", nrow = 1)
 }
 compare_spectrums_by_unit(df2, "y", "residuals") %>% 
   plot_panel()
 
-
+ggsave(filename = paste0(out, "/panel_fes_tw_spec.png"), height = 3, width = 10)
 ```
 
 ```{r}
 compare_spectrums_by_unit(df2, "y", "residuals_full") %>% 
   plot_panel()
-
+ggsave(filename = paste0(out, "/panel_fes_year_unit_spec.png"), height = 3, width = 10)
 ```
 
 # Section 2: Getting the same coefficients using FE and Fourier
@@ -137,21 +152,35 @@ df <- gen_ts(dates, "y", beta = 0.8)
 df$ly <- dplyr::lag(df$y)
 
 # Estimate using FE
-m  <- feols(y ~ ly | year, data = df)
-coef(m)
+m  <- lm(y ~ ly + factor(year), data = df)
+coef(m)["ly"]
 ```
 
 ```{r}
-Q <- 2 * dim(df)[1] / 12
+Q  <- 2 * dim(df)[1] / 12
+
 df <- add_fitted_vals(df, Q, "y")
+
+df <- df %>% group_by(year) %>% mutate(year_fe = mean(y), 
+                                       filtered_mean = mean(yhat)) %>% 
+  ungroup()
+
 ggplot(df) + 
   geom_line(aes(x = date, y = y), color = "red", alpha = 0.5) +
-  geom_line(aes(x = date, y = residual)) + 
+  # geom_line(aes(x = date, y = residual)) + 
   geom_line(aes(x = date, y = yhat)) + 
-  ggtitle("Red line is sum of the two black lines")
+  geom_line(aes(x = date, y = year_fe), color = "blue") 
+ggsave(filename = paste0(out, "/compare_fe_cos.png"), height = 3, width = 10)
 ```
 
 ```{r}
 
-lm(data = df, residual ~ dplyr::lag(residual))
+lm(data = df, y ~ dplyr::lag(y) + filtered_mean) 
+```
+
+Compare the fixed effects that are removed to the average value of the low frequency filtered fitted values
+
+```{r}
+ggplot(df) + geom_point(aes(x = year_fe, y = filtered_mean, color = date)) + 
+  geom_abline(intercept = 0, slope = 1, alpha = 0.4)
 ```
