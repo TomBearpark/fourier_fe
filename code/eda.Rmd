@@ -27,16 +27,6 @@ dates   <-
   expand_grid(unit = 1, year = 1990:2010, month = 1:12) %>% 
   mutate(date = make_date(year = year, month = month, day = 1))
 
-gen_ts <- function(df, newvar, beta = 0.8){
-  df[newvar]   <- NA
-  df[1,newvar] <- 0
-  N <- length(df[[newvar]])
-  for(ii in 2:N) df[ii, newvar] <- beta * df[ii - 1, newvar] + rnorm(1) 
-  df %>% 
-    group_by(year) %>% 
-      mutate(!!newvar := .data[[newvar]] + rnorm(n = 1, sd = 2)) %>% 
-    ungroup()
-}
 df <- gen_ts(dates, "y1")
 m  <- feols(df, y1 ~ 1 | year)
 df$residuals1 <- m$residuals
@@ -78,7 +68,7 @@ p1 <- ggplot(plot_df) +
 
 p2 <- ggplot(plot_df %>% filter(freq < 0.1)) + 
   geom_line(aes(x = freq, y = value, color = name)) + 
-  geom_vline(xintercept = 0.5 / (length(unique(df$year))))
+  geom_vline(xintercept = 1 / (length(unique(df$year))))
 p <- p1 + p2
 ggsave(plot = p, filename = paste0(out, "/ts_spec.png"), height = 4, width = 10)
 p
@@ -141,46 +131,13 @@ compare_spectrums_by_unit(df2, "y", "residuals_full") %>%
 ggsave(filename = paste0(out, "/panel_fes_year_unit_spec.png"), height = 3, width = 10)
 ```
 
-# Section 2: Getting the same coefficients using FE and Fourier
+# 
 
 ```{r}
-dates   <- 
-  expand_grid(unit = 1, year = 1980:2010, month = 1:12) %>% 
-  mutate(date = make_date(year = year, month = month, day = 1))
-
-df <- gen_ts(dates, "y", beta = 0.8)
-df$ly <- dplyr::lag(df$y)
-
-# Estimate using FE
-m  <- lm(y ~ ly + factor(year), data = df)
-coef(m)["ly"]
-```
-
-```{r}
-Q  <- 2 * dim(df)[1] / 12
-
-df <- add_fitted_vals(df, Q, "y")
-
-df <- df %>% group_by(year) %>% mutate(year_fe = mean(y), 
-                                       filtered_mean = mean(yhat)) %>% 
-  ungroup()
-
-ggplot(df) + 
-  geom_line(aes(x = date, y = y), color = "red", alpha = 0.5) +
-  # geom_line(aes(x = date, y = residual)) + 
-  geom_line(aes(x = date, y = yhat)) + 
-  geom_line(aes(x = date, y = year_fe), color = "blue") 
-ggsave(filename = paste0(out, "/compare_fe_cos.png"), height = 3, width = 10)
-```
-
-```{r}
-
-lm(data = df, y ~ dplyr::lag(y) + filtered_mean) 
-```
-
-Compare the fixed effects that are removed to the average value of the low frequency filtered fitted values
-
-```{r}
-ggplot(df) + geom_point(aes(x = year_fe, y = filtered_mean, color = date)) + 
-  geom_abline(intercept = 0, slope = 1, alpha = 0.4)
+df2$time <- as.numeric(df2$date)
+m4 <- feols(y ~ 1 | unit[time] +  unit[time^2]+ + year + unit, data = df2)
+df2$residuals_full_wtt <- m4$residuals
+compare_spectrums_by_unit(df2, "y", "residuals_full_wtt") %>% 
+  plot_panel()
+ggsave(filename = paste0(out, "/panel_fes_year_unit_spec_w_tt.png"), height = 3, width = 10)
 ```
