@@ -1,0 +1,39 @@
+---
+title: "Orthonormal Matrices"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma)
+```
+A square matrix $Q$ is orthonormal if $Q'Q=I$. Let $\mathbf{v}_j$ be the $j$th column of $Q$, then, the definition implies that $\mathbf{v}_i'\mathbf{v}_i=1, i=1,\ldots,n$ and $\mathbf{v}_i'\mathbf{v}_j=0,i\neq j$, that is that the columns of $Q$ are all orthogonal to each other, i.e. the inner product of any two columns is 0.
+
+Say we have data $(X,y)$. Rotating the data by $Q$ does not affect our least squares estimator $\widehat{\beta}$. Note that
+\[\widehat{\beta} = (X'X)^{-1}X'y=(X'Q'QX)^{-1}X'Q'Qy=(\widetilde X'\widetilde X)^{-1}\widetilde{X}'\widetilde{y},\]
+where $\widetilde X=QX$ and $\widetilde y = Qy$. More is true. Note that 
+\[Q'Q = I\implies Q'QQ^{-1}=Q^{-1}\implies Q'=Q^{-1}\]
+thus
+\[\widehat{\beta} = (X'X)^{-1}X'y=(X'QQ^{-1}X)^{-1}X'QQ^{-1}y=(X'QQ''X)^{-1}X'QQ'y=(\widehat X'\widehat X)^{-1}\widehat{X}'\widehat{y},\]
+Let's see a practical example now.
+
+```{r}
+data <- cars
+Q <- randortho(length(cars$speed))
+data$speedQ <- Q %*% data$speed
+data$distQ <- Q %*% data$dist
+data$speedQtr <- t(Q) %*% data$speed
+data$distQtr <- t(Q) %*% data$dist
+```
+Regression with raw data.
+```{r}
+lm(dist ~ speed - 1 , data = cars)
+```
+Regression with data pre-multiplied by $Q$.
+```{r}
+lm(distQ ~ speedQ - 1 , data = data)
+```
+Regression with data pre-multiplied by $Q'$.
+```{r}
+lm(distQtr ~ speedQtr - 1 , data = data)
+```
